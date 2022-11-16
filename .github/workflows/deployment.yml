@@ -4,7 +4,7 @@ on:
   pull_request:
   push:
     branches:
-      - '**'        # matches every branch
+      - 'main'
 
     paths:
       - '**.tf'
@@ -24,18 +24,11 @@ env:
 
 jobs:
   deployment:
-    runs-on: [atc-ubuntu-latest]
+    runs-on: [ubuntu-latest]
     name: Validate & Deploy
     steps:
       - name: Checkout
         uses: actions/checkout@v3
-      - name: Prepare Git User
-        run: |
-            # clear gitconfig extraheader when exists
-            git config --global --unset-all http."https://atc-github.azure.cloud.bmw/".extraheader ||true
-            # use github token transparently for cloning terraform module repositories
-            git config --global --add http."https://atc-github.azure.cloud.bmw/".extraheader "Authorization: basic $(echo -n "x-access-token:${{ secrets.GITHUB_TOKEN }}" | base64)"
-        shell: bash
 
       - name: Install tools
         run: |
