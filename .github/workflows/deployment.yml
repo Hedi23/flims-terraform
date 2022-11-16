@@ -60,7 +60,7 @@ jobs:
       - name: Terraform Plan
         working-directory: ./terraform
         id: plan
-        if: github.event_name == 'pull_request'
+        if: github.event_name == 'push'
         run: |
             terraform plan -input=false -out=plan.local
             terraform show -no-color plan.local | tee output.local
@@ -73,11 +73,11 @@ jobs:
 
       - name: Update Pull Request
         uses: actions/github-script@v6
-        if: github.event_name == 'pull_request'
+        if: github.event_name == 'push'
         env:
           PLAN: "terraform plan:\n${{ steps.plan.outputs.stdout }}"
         with:
-          github-token: ${{ secrets.GITHUB_TOKEN }}
+          github-token: ${{ secrets.GIT_TOKEN }}
           script: |
             const output = `#### Terraform Format and Style 🖌\`${{ steps.fmt.outcome }}\`
             #### Terraform Initialization ⚙️\`${{ steps.init.outcome }}\`
