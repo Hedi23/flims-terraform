@@ -3,3 +3,188 @@ variable "cloud_region" {
   description = "define the location which tf should use."
   default     = "eu-central-1"
 }
+
+# ---------------------------------------------------------------------------------------------------------------------
+# Global Variables
+# ---------------------------------------------------------------------------------------------------------------------
+variable "cloud_region" {
+  type        = string
+  description = "define the location which tf should use."
+}
+
+variable "global_config" {
+  type = object({
+    env             = string
+    customer_prefix = string
+    product_id      = string
+    application     = string
+    app_name        = string
+    costcenter      = string
+  })
+
+  description = "Variables used to ensure mandatory Governance Tags and Resource Naming convention."
+}
+
+# ---------------------------------------------------------------------------------------------------------------------
+# Custom Variables
+# ---------------------------------------------------------------------------------------------------------------------
+variable "custom_tags" {
+  type        = map(string)
+  default     = null
+  description = "Set custom tags for deployment."
+}
+
+variable "custom_name" {
+  type        = string
+  default     = ""
+  description = "Set custom name for deployment."
+}
+
+variable "commons_file_json" {
+  type        = string
+  default     = ""
+  description = "Json file to override the commons fixed variables."
+}
+
+variable "local_file_json_tpl" {
+  type        = string
+  default     = ""
+  description = "Json Template file to override the local settings template."
+}
+
+variable "naming_file_json_tpl" {
+  type        = string
+  default     = ""
+  description = "Json Template file to override the Naming template."
+}
+
+# ---------------------------------------------------------------------------------------------------------------------
+# ALB Variables
+# ---------------------------------------------------------------------------------------------------------------------
+
+variable "public_vpc_id" {
+  description = "ID of the Public VPC where the public ingress resources will be deployed"
+  type        = string
+  default     = null
+}
+
+variable "public_vpc_subnet_ids" {
+  description = "ID of the Public subnets where the public ingress resources will be deployed. Using different availability zones will deploy a VPC endpoint on each availability zone."
+  type        = list(string)
+  default     = null
+}
+
+variable "public_dns_zone_name" {
+  description = "Name of the public DNS zone that will be used for the public ALB"
+  type        = string
+  default     = null
+}
+
+
+variable "public_dns_zone_record" {
+  description = "Name of the public DNS zone record that will be used to resolve the ALB"
+  type        = string
+  default     = null
+}
+
+variable "nlb_arn" {
+  description = "The ARN of the Private NLB to allow public ingress"
+  type        = string
+  default     = null
+}
+
+
+variable "use_aws_certificate" {
+  description = "Do you want to use an AWS created certificate? Defaults to false. Set this value to true if you don't want to use your own certificate."
+  type        = bool
+  default     = false
+}
+
+variable "certificate_arn" {
+  description = "The ARN of the certificate to be used for HTTPS validation. Only allowed if 'use_aws_certificate' is false. If not inputting a certificate ARN, set 'use_aws_certificate' to true"
+  type        = string
+  default     = null
+}
+
+variable "web_acl_arn" {
+  description = "(Required) The Amazon Resource Name (ARN) of the WAF ACL to associate with the public ALB."
+  type        = list(string)
+  default     = []
+
+  validation {
+    condition     = length(var.web_acl_arn) <= 1
+    error_message = "Only one WAF can be associated with any aws resource."
+  }
+}
+
+variable "lb_listener_port" {
+  description = "The port where the public ALB will be listening. Defaults to 443"
+  type        = number
+  default     = 443
+}
+
+variable "lb_backend_port" {
+  description = "The backend port for the public ALB target group. Defaults to 443"
+  type        = number
+  default     = 443
+}
+
+variable "lb_logs_access_logs_prefix" {
+  description = "The prefix for the access logs for the public ALB."
+  type        = string
+  default     = null
+}
+
+variable "waf_logs_logging_account" {
+  description = "The logging account to be used for the central S3 bucket for WAF logs. Region will be set using the Cloud_region variable."
+  type        = string
+  default     = "104485279185"
+  validation {
+    condition     = var.waf_logs_logging_account == "104485279185" || var.waf_logs_logging_account == "026737776403" || var.waf_logs_logging_account == "182644848212" || var.waf_logs_logging_account == "530044717226"
+    error_message = "Not a valid logging account."
+  }
+}
+
+variable "waf_logs_identifier_name" {
+  description = "An identifier name for the WAF logs generated by the WAF ACL on the public ALB."
+  type        = string
+  default     = null
+}
+
+variable "authenticate_oidc" {
+  description = <<-EOF
+    Map defining the configuration for OIDC authentication. Setting this variable will enable OIDC authentication on the public ALB.
+
+    Required key/values:
+
+    - authorization_endpoint              = Authorization endpoint of the IdP.
+    - client_id                           = OAuth 2.0 client identifier.
+    - client_secret                       = OAuth 2.0 client secret.
+    - issuer                              = OIDC issuer identifier of the IdP.
+    - token_endpoint                      = Token endpoint of the IdP.
+    - user_info_endpoint                  = User info endpoint of the IdP.
+
+    Optional key/values:
+    - authentication_request_extra_params = Query parameters to include in the redirect request to the authorization endpoint. Max: 10.
+    - on_unauthenticated_request          = Behavior if the user is not authenticated. Valid values: deny, allow and authenticate
+    - scope                               = Set of user claims to be requested from the IdP.
+    - session_cookie_name                 = Name of the cookie used to maintain session information.
+    - session_timeout                     = Maximum duration of the authentication session, in seconds.
+
+  EOF
+  type        = any
+  default     = {}
+}
+
+# kms_master_key_id for s3 Bucket
+variable "use_aes256_encryption" {
+  description = "Use AES256 server-side encryption algorithm for server-side encryption. If false aws:kms will be used."
+  type        = bool
+  default     = false
+}
+
+variable "kms_master_key_id" {
+  description = "(Optional) The AWS KMS master key ID used for the S3 SSE-KMS encryption. This can only be used when you set the value of sse_algorithm as aws:kms. The default aws/s3 AWS KMS master key is used if this element is absent while the sse_algorithm is aws:kms"
+  type        = string
+  default     = null
+}
