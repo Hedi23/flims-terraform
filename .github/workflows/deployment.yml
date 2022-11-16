@@ -18,6 +18,7 @@ concurrency:
   group: terraform
 
 env:
+  TF_LOG: INFO
   AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
   AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
 
@@ -55,6 +56,7 @@ jobs:
         id: plan
         if: github.event_name == 'push'
         run: |
+            terraform force-unlock -force 09789374-0b5b-41d4-97cc-ce2df7ad8130
             terraform plan -no-color
         continue-on-error: true
 
