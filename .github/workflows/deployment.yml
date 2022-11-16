@@ -50,7 +50,7 @@ jobs:
       - name: Terraform Init
         working-directory: ./terraform
         id: init
-        run: terraform init
+        run: terraform init -backend-config="bucket=${AWS_BUCKET_NAME}" -backend-config="key=${AWS_BUCKET_KEY_NAME}" -backend-config="region=${AWS_REGION}"
 
       - name: Terraform Validate
         working-directory: ./terraform
@@ -62,13 +62,7 @@ jobs:
         id: plan
         if: github.event_name == 'push'
         run: |
-            terraform plan -input=false -out=plan.local
-            terraform show -no-color plan.local | tee output.local
-            STDOUT=$(cat output.local)
-            STDOUT="${STDOUT//'%'/'%25'}"
-            STDOUT="${STDOUT//$'\n'/'%0A'}"
-            STDOUT="${STDOUT//$'\r'/'%0D'}"
-            echo "::set-output name=stdout::$STDOUT"
+            terraform plan -no-color
         continue-on-error: true
 
       - name: Update Pull Request
