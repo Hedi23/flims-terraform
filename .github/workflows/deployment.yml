@@ -56,9 +56,8 @@ jobs:
         id: plan
         if: github.event_name == 'push'
         run: |
-            terraform force-unlock -force 09789374-0b5b-41d4-97cc-ce2df7ad8130
-            terraform plan -no-color
-        continue-on-error: true
+            terraform plan -no-color -lock=false
+        continue-on-error: true 
 
       - uses: actions/github-script@v6
         if: github.event_name == 'pull_request'
