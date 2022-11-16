@@ -1,0 +1,140 @@
+name: 'Github Runner deployment'
+on:
+  workflow_dispatch:
+  pull_request:
+  push:
+    branches:
+      - '**'        # matches every branch
+
+    paths:
+      - '**.tf'
+      - '**.tfvars'
+      - '**.hcl'
+      - '**.sh'
+      - '.github/workflows/deployment.yml'
+
+# Ensures that only one deploy task run at a time.
+concurrency:
+  group: terraform
+
+env:
+  AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+  AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+  PACKER_GITHUB_API_TOKEN: ${{ secrets.PUBLIC_GITHUB_TOKEN }} # needed for Github.com API rate limit
+
+jobs:
+  deployment:
+    runs-on: [atc-ubuntu-latest]
+    name: Validate & Deploy
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+      - name: Prepare Git User
+        run: |
+            # clear gitconfig extraheader when exists
+            git config --global --unset-all http."https://atc-github.azure.cloud.bmw/".extraheader ||true
+            # use github token transparently for cloning terraform module repositories
+            git config --global --add http."https://atc-github.azure.cloud.bmw/".extraheader "Authorization: basic $(echo -n "x-access-token:${{ secrets.GITHUB_TOKEN }}" | base64)"
+        shell: bash
+
+      - name: Install tools
+        run: |
+            if ! command -v terraform &> /dev/null; then
+              echo "terraform could not be found, installing."
+              sudo apt-get update &> /dev/null && sudo apt-get install -y gnupg software-properties-common curl  &> /dev/null
+              curl -fsSL https://apt.releases.hashicorp.com/gpg | sudo apt-key add -  &> /dev/null
+              sudo apt-add-repository "deb [arch=amd64] https://apt.releases.hashicorp.com $(lsb_release -cs) main" &> /dev/null
+              sudo apt-get update && sudo apt-get -y install terraform jq rpl libxml2-utils &> /dev/null
+            fi
+            if ! command -v packer &> /dev/null; then
+              echo "packer could not be found, installing."
+              sudo apt-get update &> /dev/null && sudo apt-get install -y gnupg software-properties-common curl  &> /dev/null
+              curl -fsSL https://apt.releases.hashicorp.com/gpg | sudo apt-key add -  &> /dev/null
+              sudo apt-add-repository "deb [arch=amd64] https://apt.releases.hashicorp.com $(lsb_release -cs) main" &> /dev/null
+              sudo apt-get update && sudo apt-get -y install packer &> /dev/null
+            fi
+            echo "Terraform: `which terraform` - `terraform --version -json | jq -r '.terraform_version'`"
+            echo "Packer: `which packer` - `packer --version`"      
+        shell: bash
+
+      - name: Packer Init & Validate
+        working-directory: ./packer/ubuntu-focal-20.04
+        run: |
+            packer init .
+            packer validate .
+        shell: bash
+
+      - name: Packer Build AMI - ubuntu-focal-20.04
+        if: github.ref == 'refs/heads/main'
+        working-directory: ./packer/ubuntu-focal-20.04
+        run: |
+            packer build .
+        shell: bash
+
+      - name: Terraform Format Check
+        working-directory: ./terraform
+        id: fmt
+        run: terraform fmt -check
+
+      - name: Terraform Init
+        working-directory: ./terraform
+        id: init
+        run: terraform init
+
+      - name: Terraform Validate
+        working-directory: ./terraform
+        id: validate
+        run: terraform validate -no-color
+
+      - name: Terraform Plan
+        working-directory: ./terraform
+        id: plan
+        if: github.event_name == 'pull_request'
+        run: |
+            terraform plan -input=false -out=plan.local
+            terraform show -no-color plan.local | tee output.local
+            STDOUT=$(cat output.local)
+            STDOUT="${STDOUT//'%'/'%25'}"
+            STDOUT="${STDOUT//$'\n'/'%0A'}"
+            STDOUT="${STDOUT//$'\r'/'%0D'}"
+            echo "::set-output name=stdout::$STDOUT"
+        continue-on-error: true
+
+      - name: Update Pull Request
+        uses: actions/github-script@v6
+        if: github.event_name == 'pull_request'
+        env:
+          PLAN: "terraform plan:\n${{ steps.plan.outputs.stdout }}"
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const output = `#### Terraform Format and Style 🖌\`${{ steps.fmt.outcome }}\`
+            #### Terraform Initialization ⚙️\`${{ steps.init.outcome }}\`
+            #### Terraform Validation 🤖\`${{ steps.validate.outcome }}\`
+            #### Terraform Plan 📖\`${{ steps.plan.outcome }}\`
+
+            <details><summary>Show Plan</summary>
+
+            \`\`\`\n
+            ${process.env.PLAN}
+            \`\`\`
+
+            </details>
+
+            *Pushed by: @${{ github.actor }}, Action: \`${{ github.event_name }}\`*`;
+
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: output
+            })
+
+      - name: Terraform Plan Status
+        if: steps.plan.outcome == 'failure'
+        run: exit 1
+
+      - name: Terraform Apply
+        working-directory: ./terraform
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        run: terraform apply -auto-approve -input=false
